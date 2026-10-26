@@ -93,28 +93,19 @@ FONT_FILES = {
     ("en", True):  os.path.join(FONT_DIR, "NotoSans-Bold.ttf"),
 }
 
-BACKGROUND_URL = os.getenv(
-    "BACKGROUND_URL",
-    "https://upload.wikimedia.org/wikipedia/commons/9/93/Masjid_An-Nabawi_in_Madinah.jpg"
-)
-BACKGROUND_FILE = os.path.join(BASE_DIR, "background_remote.jpg")
+BACKGROUND_FILE = os.path.join(BASE_DIR, "background.jpg")
 
 
 def ensure_background():
-    """Download the high-resolution Madina background once on startup."""
-    if os.path.exists(BACKGROUND_FILE) and os.path.getsize(BACKGROUND_FILE) > 200000:
-        return BACKGROUND_FILE
-    try:
-        r = requests.get(BACKGROUND_URL, timeout=45,
-                         headers={"User-Agent": "IslamicSongsLyricsBot/1.0"})
-        r.raise_for_status()
-        tmp = BACKGROUND_FILE + ".tmp"
-        with open(tmp, "wb") as f:
-            f.write(r.content)
-        os.replace(tmp, BACKGROUND_FILE)
-        return BACKGROUND_FILE
-    except Exception:
-        return None
+    """Use only the background.jpg stored beside app.py in the GitHub repo."""
+    if os.path.isfile(BACKGROUND_FILE):
+        try:
+            with Image.open(BACKGROUND_FILE) as im:
+                im.verify()
+            return BACKGROUND_FILE
+        except Exception:
+            return None
+    return None
 
 
 def fallback_background(W, H):
@@ -430,7 +421,7 @@ def allowed(uid):
 
 @app.get("/")
 def home():
-    return "Islamic Songs Lyrics Bot is running", 200
+    return "Islamic Songs Lyrics Bot is running - local background.jpg mode", 200
 
 
 @app.post("/webhook")
