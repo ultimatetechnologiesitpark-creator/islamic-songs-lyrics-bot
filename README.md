@@ -1,31 +1,41 @@
-# Islamic Songs Lyrics Telegram Bot
+# Islamic Songs Lyrics Bot — V3
 
-Input example:
+Render/Gunicorn Telegram bot for `@islamicsongslyrics`.
 
-[T] കൺമണി ബീവി ഖദീജ
-[C] Madh & Naat
-[S] Ashkar Thekkekad, Salman Kallur
-[Y] https://youtu.be/example
+## Input
+```text
+[T] Title
+[C] Category
+[S] Singer
+[Y] YouTube Link
 
 [L]
-ഇവിടെ മുഴുവൻ lyrics...
+Full Lyrics
+```
 
-## Render settings
-Build Command:
-pip install -r requirements.txt
+## Image template
+- High-resolution Masjid an-Nabawi photo downloaded automatically at startup
+- Fixed professional category box
+- Fixed professional title box
+- Dynamic lyrics area (poster grows vertically)
+- Fixed `CREATED BY` box
+- Singer and YouTube link are NOT placed on the image
+- Malayalam font is bundled in `fonts/`
+- Final text is rendered programmatically, so Malayalam spelling stays crisp and accurate
 
-Start Command:
-gunicorn app:app
+## Background image
+The default background is **Masjid An-Nabawi in Madinah** by Adli Wahid, 2,978 × 4,382 px, from Wikimedia Commons.
+License: **CC BY-SA 4.0**. The bot downloads the original high-resolution file from Wikimedia Commons at startup.
+Source: https://commons.wikimedia.org/wiki/File:Masjid_An-Nabawi_in_Madinah.jpg
 
-Environment variables:
-BOT_TOKEN = your BotFather token
-CHANNEL_USERNAME = @islamicsongslyrics
-START_NUMBER = 526
-OWNER_ID = your numeric Telegram user ID (recommended)
+You may override the source with the `BACKGROUND_URL` environment variable if desired.
 
-After deployment, set Telegram webhook:
-https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://YOUR-RENDER-URL.onrender.com/webhook
+## Environment variables
+- `BOT_TOKEN`
+- `CHANNEL_USERNAME` (default `@islamicsongslyrics`)
+- `OWNER_ID` (optional)
+- `START_NUMBER` (default `526`)
+- `COUNTER_FILE` (default `/tmp/post_counter.json`)
+- `BACKGROUND_URL` (optional)
 
-Do not commit your BOT_TOKEN to GitHub.
-
-Note: the simple counter is stored in /tmp and can reset when the service restarts. For permanent numbering, connect a persistent database before relying on it long-term.
+The post number advances only after a successful channel publish.
