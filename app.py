@@ -164,6 +164,104 @@ def text_width(draw, text, font):
     return b[2] - b[0]
 
 
+
+def char_script(ch):
+    cp = ord(ch)
+    if 0x0D00 <= cp <= 0x0D7F:
+        return "ml"
+    if ((0x0600 <= cp <= 0x06FF) or
+        (0x0750 <= cp <= 0x077F) or
+        (0x08A0 <= cp <= 0x08FF) or
+        (0xFB50 <= cp <= 0xFDFF) or
+        (0xFE70 <= cp <= 0xFEFF)):
+        return "ar"
+    return "en"
+
+
+def split_script_runs(text):
+    """Split one visual line into Malayalam / Arabic / Latin runs."""
+    if not text:
+        return []
+    runs = []
+    current = ""
+    current_script = None
+    for ch in text:
+        s = char_script(ch)
+        # Spaces/punctuation stay with the surrounding run.
+        if ch.isspace() or (not ch.isalnum() and s == "en"):
+            current += ch
+            continue
+        if current_script is None:
+            current_script = s
+            current += ch
+        elif s == current_script:
+            current += ch
+        else:
+            if current:
+                runs.append((current_script or "en", current))
+            current_script = s
+            current = ch
+    if current:
+        runs.append((current_script or "en", current))
+    return runs
+
+
+def font_for_script(script, size=48, bold=False):
+    return ImageFont.truetype(
+        FONT_FILES[(script, bool(bold))],
+        size,
+        layout_engine=ImageFont.Layout.RAQM
+    )
+
+
+def run_width(draw, script, text, font):
+    kwargs = {}
+    if script == "ar":
+        kwargs = {"direction": "rtl", "language": "ar"}
+    b = draw.textbbox((0, 0), text, font=font, **kwargs)
+    return b[2] - b[0]
+
+
+def mixed_text_width(draw, text, size=48, bold=False):
+    return sum(
+        run_width(draw, s, t, font_for_script(s, size, bold))
+        for s, t in split_script_runs(text)
+    )
+
+
+def draw_mixed_text(draw, xy, text, size=48, bold=False, fill=(24, 30, 28, 255)):
+    """Render each Unicode script with its own bundled font."""
+    x, y = xy
+    for script, chunk in split_script_runs(text):
+        font = font_for_script(script, size, bold)
+        kwargs = {}
+        if script == "ar":
+            kwargs = {"direction": "rtl", "language": "ar"}
+        draw.text((x, y), chunk, font=font, fill=fill, **kwargs)
+        x += run_width(draw, script, chunk, font)
+
+
+def wrap_mixed_words(draw, text, max_width, size=48, bold=False):
+    """Wrap by words while measuring every word with its proper script font."""
+    out = []
+    for para in text.splitlines():
+        if not para.strip():
+            out.append("")
+            continue
+        words = para.split()
+        line = ""
+        for word in words:
+            trial = word if not line else line + " " + word
+            if mixed_text_width(draw, trial, size, bold) <= max_width:
+                line = trial
+            else:
+                if line:
+                    out.append(line)
+                line = word
+        if line:
+            out.append(line)
+    return out
+
 def wrap_words(draw, text, font, max_width):
     lines = []
     for para in text.splitlines():
@@ -208,14 +306,8 @@ def make_image(d, n):
     probe = Image.new("RGB", (W, 100), "white")
     pdraw = ImageDraw.Draw(probe)
     body_font = None
-    # Wrap each paragraph with its own script-specific font.
-    lyric_lines = []
-    for para in lyrics.splitlines():
-        if not para.strip():
-            lyric_lines.append("")
-            continue
-        pf = load_font(48, bold=False, text=para)
-        lyric_lines.extend(wrap_words(pdraw, para, pf, W - 2 * margin))
+    # V5: measure and wrap mixed Malayalam + English + Arabic correctly.
+    lyric_lines = wrap_mixed_words(pdraw, lyrics, W - 2 * margin, size=48, bold=False)
     line_h = 70
     blank_extra = 18
 
@@ -270,7 +362,13 @@ def make_image(d, n):
     cat_text = category or ""
     cx = (W - text_width(dr, cat_text, cat_font)) // 2
     cy = cat_y + (cat_box_h - (cat_font.size if hasattr(cat_font, 'size') else 50)) // 2 - 4
-    draw_text(dr, (cx, cy), cat_text, cat_font, (255, 248, 226, 255))
+    cat_scripts = {s for s, t in split_script_runs(cat_text) if t.strip()}
+    if len(cat_scripts) > 1:
+        cw2 = mixed_text_width(dr, cat_text, size=42, bold=True)
+        draw_mixed_text(dr, ((W-cw2)//2, cy), cat_text, size=42, bold=True,
+                        fill=(255, 248, 226, 255))
+    else:
+        draw_text(dr, (cx, cy), cat_text, cat_font, (255, 248, 226, 255))
 
     # Title fixed box.
     title_y = cat_y + cat_box_h + 45
@@ -284,7 +382,14 @@ def make_image(d, n):
     tb = dr.textbbox((0,0), title, font=title_font)
     th = tb[3] - tb[1]
     ty = title_y + (title_box_h - th) // 2 - tb[1]
-    draw_text(dr, (tx, ty), title, title_font, (10, 86, 64, 255), stroke_width=1, stroke_fill=(255,255,255,255))
+    title_scripts = {s for s, t in split_script_runs(title) if t.strip()}
+    if len(title_scripts) > 1:
+        tw2 = mixed_text_width(dr, title, size=52, bold=True)
+        draw_mixed_text(dr, ((W-tw2)//2, ty), title, size=52, bold=True,
+                        fill=(10, 86, 64, 255))
+    else:
+        draw_text(dr, (tx, ty), title, title_font, (10, 86, 64, 255),
+                  stroke_width=1, stroke_fill=(255,255,255,255))
 
     # Lyrics.
     y = title_y + title_box_h + 70
@@ -292,14 +397,13 @@ def make_image(d, n):
         if line == "":
             y += blank_extra
         else:
-            line_font = load_font(48, bold=False, text=line)
-            if script_of(line) == "ar":
-                # Right-align Arabic lyrics inside the same content area.
-                lw = text_width(dr, line, line_font)
-                x = W - margin - lw
-            else:
-                x = margin
-            draw_text(dr, (x, y), line, line_font, (24, 30, 28, 255))
+            # Pure Arabic lines are right-aligned. Mixed/Latin/Malayalam lines
+            # keep normal left-to-right layout, but every script gets its own font.
+            scripts = {s for s, t in split_script_runs(line) if t.strip()}
+            lw = mixed_text_width(dr, line, size=48, bold=False)
+            x = W - margin - lw if scripts == {"ar"} else margin
+            draw_mixed_text(dr, (x, y), line, size=48, bold=False,
+                            fill=(24, 30, 28, 255))
             y += line_h
 
     # Fixed creator box.
